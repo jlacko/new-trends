@@ -1,0 +1,317 @@
+---
+title: 'Thirsty Salesman Problem'
+subtitle: 'Solving TSP using R in context of {sf} & HERE API'
+author: 'Jindra Lacko'
+date:    "`r format(Sys.time(), '%Y-%m-%d')`"
+always_allow_html: true
+output:
+  pdf_document:
+    latex_engine: xelatex
+    template: "../master.tex"
+    fig_caption: yes
+---
+
+My Alma Mater, [Prague School of Economics](https://www.vse.cz/english/), is located in Žižkov. A formerly working class neighborhood, now rather gentrified, it has to this day retained some traces of its former rougher edges. One of these is an active night life.
+
+A crawl through the bars of Žižkov is therefore a familiar activity for many VŠE students, and can serve as a gateway drug for serious optimization techniques. Such as the [Travelling Salesman Problem](https://en.wikipedia.org/wiki/Travelling_salesman_problem).
+
+The TSP is an optimization classic, with a number of well understood and highly standardized solutions available in the context of statistical programming language R. 
+
+In this blog post I would like to share a practical example of solving the TSP using Open Street Map data of bars via [`{osmdata}`](https://cran.r-project.org/package=osmdata) and HERE routing engine via [`{hereR}`](https://cran.r-project.org/package=hereR). The actual solution will be found by utilizing the [`{TSP}`](https://cran.r-project.org/package=TSP) package.
+
+```{r drammatis-personae, message = F}
+library(sf) # for spatial data handling
+library(dplyr) # for general data frame processing
+library(osmdata) # to get data in from OSM
+library(leaflet) # to show data interactively
+library(hereR) # interface to routing engine
+library(TSP) # to solve TSP
+```
+
+The first step in our exercise is acquiring data of Žižkov bars. A search is performed over the area of *core Žižkov*, defined as a polygon, using the OSM Overpass API.
+
+As there seems not to be a clear consensus over what constitutes a bar, restaurant or a pub in Prague I am including all three of the possible amenities.
+
+```{r raw-data, out.width = '100%', message = F}
+# bbox = http://bboxfinder.com - "core" Žižkov
+core_zizkov <- c(14.437408,50.081131,
+                 14.452686,50.087561)
+
+# acquire bar data - https://wiki.openstreetmap.org/wiki/Map_features#Amenity 
+search_res <- opq(bbox = core_zizkov) %>%
+  add_osm_feature(key = "amenity", 
+                  value = c("bar", "restaurant", "pub")) %>%
+  osmdata_sf(quiet = T) 
+
+# pulls bars as points
+bars <- search_res$osm_points %>%  
+  filter(!is.na(name)) %>% 
+  select(name)
+
+# show results
+leaflet(bars) %>% 
+  addProviderTiles("CartoDB.Positron") %>% 
+  addCircleMarkers(fillColor = "red",
+                   radius = 5,
+                   stroke = F,
+                   fillOpacity = .75,
+                   label = ~ name)
+
+```
+<br>
+We have located `r nrow(bars)` bars, implying a distance matrix of `r nrow(bars) ^2` elements. Not a huge one by today's standards — but big enough to think twice about trying to solve using a pen and a piece of paper.
+
+I have found that while it is not overly difficult to solve the TSP for *all* the Žižkov bars there is educational value in running the TSP over only a small sample. I have found it advantageous to be able to actually show the distance matrix — and this page will easily accommodate only about a 5×5 matrix.
+
+```{r vzorek, out.width = '100%', message = F}
+
+# a sample of bars to make the matrix fit a web page
+vzorek <- bars %>% 
+  slice_sample(n = 5)
+
+# a beer tankard icon for nicer display
+beer_icon <- makeAwesomeIcon(
+  icon = "beer",
+  iconColor = "black",
+  markerColor = "blue",
+  library = "fa"
+)
+
+# a quick overview of our selection
+leaflet(vzorek) %>% 
+  addProviderTiles("CartoDB.Positron") %>% 
+  addAwesomeMarkers(data = vzorek,
+                    icon = beer_icon, # the awesome icon declared earlier
+                    label = ~name)
+
+```
+<br>
+
+The easiest distance matrix to calculate is plain "as the crow flies" distance. This can be calculated via a `sf::st_distance()` call.
+
+The resulting matrix will be based on pure distance, with some differences in interpretation depending on coordinate reference system of underlying data (Euclidean in projected CRS and spherical in unprojected CRS).
+
+```{r crow-flies, out.width = '100%', message = F}
+# distance matrix "as the crow flies"
+crow_matrix <- st_distance(vzorek,
+                           vzorek)
+
+# naming the dimensions for easier orientation
+rownames(crow_matrix) <- vzorek$name
+colnames(crow_matrix) <- vzorek$name
+
+# a visual check; note that the matrix has a {units} dimension
+crow_matrix
+
+```
+Calculating the distance matrix using plain distance is easy, and the resulting matrix is symmetrical (distance from A to B equals distance from B to A). It is also hollow (distance from A to A itself is zero).
+
+Solving the TSP for such a matrix is straightforward, as the hard work has been outsourced to the `{TSP}` package internals.
+
+```{r solve-crow, out.width = '100%', message = F}
+# solve the TSP via {TSP}
+crow_tsp <- crow_matrix %>% 
+  units::drop_units() %>%  # get rid of unit dimension
+  # declaring the problem as a symmetric TSP
+  TSP() %>%
+  solve_TSP()
+
+# the tour (crawl) as sequence of bars
+vzorek$name[as.numeric(crow_tsp)]
+
+```
+
+Once we have the optimal route calculated it can be visualized using `{leaflet}`. The sequence of stops needs to be completed (by repeating the first stop after the last) and cast from points to a linestring.
+
+```{r map-crow, out.width = '100%', message = F}
+stops <- as.numeric(crow_tsp) # sequence of "cities" as indices
+
+# bars in sequence, with the first repeated in last place
+crow_result <- vzorek[c(stops, stops[1]), ] %>%
+  st_combine() %>% # combined to a single object
+  st_cast("LINESTRING") # & presented as a route (a line)
+
+# present the as-the-crow-flies based route in crimson color
+leaflet(crow_result) %>% 
+  addProviderTiles("CartoDB.Positron") %>% 
+  addPolylines(color = "crimson",
+               popup = "as the crow flies...") %>% 
+  addAwesomeMarkers(data = vzorek,
+                    icon = beer_icon, # the awesome icon declared earlier
+                    label = ~name)
+
+
+```
+<br>
+From the visual overview we can see an obvious shortcoming of the "as the crow flies" approach: it completely ignores other constraints except for distance — such as the road network. 
+
+Thus while the route shown is "optimal" in the sense that it forms the shortest path joining the five bars selected, it is not one that we could actually follow (unless we were a flying crow).
+
+This shortcoming can be resolved by using an alternative distance matrix as input, while retaining the techniques of `{TSP}` for the actual route selection. A possible source of more applicable data are routing engines, available to R users via API interfacing packages. 
+
+There are [several of them available](https://www.jla-data.net/eng/routing-in-r-context/), my personal favorite being the [`{hereR}`](https://cran.r-project.org/package=hereR) package interfacing to the [HERE routing engine](https://developer.here.com/). I have found HERE to be very reliable and rich in detail. It does require registration, but its free tier is more than adequate for most individual users.
+
+```{r herer, out.width = '100%', message = F}
+# set the HERE API key; mine is stored in an envir variable
+hereR::set_key(Sys.getenv("HERE_API_KEY"))
+
+# a full set of all combinations - 5 × 5 = 25 rows
+indices <- expand.grid(from = seq_along(vzorek$name), 
+                       to = seq_along(vzorek$name))
+
+# call routing API for all permutations & store for future use
+for (i in seq_along(indices$from)) {
+  
+  active_route <- hereR::route(origin = vzorek[indices$from[i], ],
+                               destination = vzorek[indices$to[i], ],
+                               transport_mode = "car") %>% 
+    # technical columns for easier use and presentation
+    mutate(idx_origin = indices$from[i],
+           idx_destination = indices$to[i],
+           route_name = paste(vzorek$name[indices$from[i]],
+                        ">>",
+                        vzorek$name[indices$to[i]])) %>% 
+    relocate(idx_origin, idx_destination, route_name) %>% 
+    st_zm() # drop z dimension, as it messes up with leaflet viz
+  
+  if (i == 1) {
+    # if processing the first sample = initiate a result set
+    routes <- active_route 
+  } else {
+    # not processing the first sample = bind to the existing result set
+    routes <- routes %>% 
+      bind_rows(active_route)
+  }
+  
+}
+
+# a quick overview of structure of the routes data frame
+glimpse(routes)
+
+```
+
+The routing results give us several pieces of data: 
+
+- the routes as linestring objects in EPSG:4326 (for visualization later on)
+- distance of the route (in meters)
+- travel time (in seconds) both raw and adjusted for traffic
+- petrol consumption
+
+To these I have added three technical columns: indices of start & destination for easier joining of solved TSP results back and the name of the route as string for visualization purposes.
+
+Having a variety of metrics will be helpful in construction of alternative distance matrices.
+
+The first routing distance matrix will be based on route distance; notice that while the matrix is hollow it is not symmetrical. This is not surprising, as routing is not commutative — optimal route from A to B need not be the same as from B to A, due to constraints such as one way roads. Žižkov is a veritable warren of one way streets.
+
+```{r distance_matrix-1, out.width = '100%', message = F}
+# distance matrix based on actual distances
+distance_matrix <- matrix(routes$distance,
+                          nrow = nrow(vzorek),
+                          ncol = nrow(vzorek))
+
+# naming the dimensions for easier orientation
+rownames(distance_matrix) <- vzorek$name
+colnames(distance_matrix) <- vzorek$name
+
+# a visual check; the units are meters (distance)
+distance_matrix
+
+# solve the TSP via {TSP}
+distance_tsp <- distance_matrix %>% 
+  # declaring the problem as asymmetric TSP
+  ATSP() %>%
+  solve_TSP()
+
+# the tour (crawl) as sequence of bars
+vzorek$name[as.numeric(distance_tsp)]
+```
+
+Once we have solved the TSP and figured the sequence of "cities" to visit it is time to report our results.
+
+For this purpose it is advantageous to prepare a data frame of indices of start and destination, and join it back with the original dataset from HERE API (which contains routes as linestrings).
+
+```{r distance_matrix-2, out.width = '100%', message = F}
+stops <- as.numeric(distance_tsp) # sequence of "cities" as indices
+
+# a route as a set of origin & destination pairs, as indexes,
+# destination is offset by one from start (last destination = first start)
+distance_route <- data.frame(idx_origin = stops,
+                             idx_destination = c(stops[2:(nrow(vzorek))],
+                                                 stops[1]))
+
+# amend the origin & destination indexes by actual routes
+distance_result <-  distance_route %>% 
+  inner_join(routes,
+             by = c("idx_origin", "idx_destination")) %>% 
+  st_as_sf() 
+
+# present the distance based route in goldenrod color
+leaflet(distance_result) %>% 
+  addProviderTiles("CartoDB.Positron") %>% 
+  addPolylines(color = "GoldenRod",
+               popup = ~route_name) %>% 
+  addAwesomeMarkers(data = vzorek,
+                    icon = beer_icon, # the awesome icon declared earlier
+                    label = ~name)
+```
+<br>
+Since the HERE API is generous in terms of results provided it is not difficult to construct an alternative distance matrix, using a different metric. This could be either trip duration or petrol consumption.
+
+In our specific situation both of these can be expected to be be highly correlated with the plain distance results. All the streets in Žižkov are of very similar type, and the average speed & consumption are unlikely to vary greatly between the routes.
+
+The most significant difference between the distance and time based TSP will be driven by current traffic, which is a factor HERE routing engine considers.
+
+```{r time_matrix-1, out.width = '100%', message = F}
+# distance matrix based on travel time
+duration_matrix <- matrix(routes$duration,
+                          nrow = nrow(vzorek),
+                          ncol = nrow(vzorek))
+
+# names make the distance matrix easier to interpret
+rownames(duration_matrix) <- vzorek$name
+colnames(duration_matrix) <- vzorek$name
+
+# a visual check; the units are seconds (time)
+duration_matrix
+
+# solving using the same pattern as distance based TSP
+duration_tsp <- duration_matrix %>% 
+  ATSP() %>% 
+  solve_TSP() 
+
+# the tour (crawl) as sequence of bars
+vzorek$name[as.numeric(duration_tsp)]
+```
+
+Once we have solved the trip duration optimized TSP we again need to report the results; in our use case the output is very similar to the distance based one.
+
+This will not necessarily be the case in other contexts, especially ones with greater variation of road types (city streets vs. highways).
+
+```{r time_matrix-2, out.width = '100%', message = F}
+# the same steps as for distance based matrix
+stops <- as.numeric(duration_tsp)
+
+duration_route <- data.frame(idx_origin = stops,
+                             idx_destination = c(stops[2:(nrow(vzorek))],
+                                                 stops[1]))
+# again, the same as for distance based calculation
+duration_result <-  duration_route %>% 
+  inner_join(routes,
+             by = c("idx_origin", "idx_destination")) %>% 
+  st_as_sf() 
+
+# present the duration based route in light blue color
+leaflet(duration_result) %>% 
+  addProviderTiles("CartoDB.Positron") %>% 
+  addPolylines(color = "cornflowerblue",
+               popup = ~route_name) %>% 
+  addAwesomeMarkers(data = vzorek,
+                    icon = beer_icon,
+                    label = ~ name)
+```
+<br>
+
+I believe my tongue in cheek example has succeeded in showing two things:
+
+- the ease of applying a standardized solution (the `{TSP}` package) to a well known and well understood problem (the Travelling Salesman Problem) within the context of R ecosystem 
+- construction of distance matrices from HERE API routing results, with option to optimize for multiple metrics (such as minimizing the travel distance, travel time and petrol consumption)
