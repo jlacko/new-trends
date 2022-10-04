@@ -23,7 +23,8 @@ In this blog post I would like to share a practical example of solving the TSP u
 library(sf) # for spatial data handling
 library(dplyr) # for general data frame processing
 library(osmdata) # to get data in from OSM
-library(leaflet) # to show data interactively
+library(basemaps) # for drawing basemap
+library(ggplot2) # for mapping static content
 library(hereR) # interface to routing engine
 library(TSP) # to solve TSP
 ```
@@ -32,7 +33,7 @@ The first step in our exercise is acquiring data of Žižkov bars. A search is p
 
 As there seems not to be a clear consensus over what constitutes a bar, restaurant or a pub in Prague I am including all three of the possible amenities.
 
-```{r raw-data, out.width = '100%', message = F}
+```{r raw-data, out.width = '100%', message = F, warning = F}
 # bbox = http://bboxfinder.com - "core" Žižkov
 core_zizkov <- c(14.437408,50.081131,
                  14.452686,50.087561)
@@ -46,47 +47,40 @@ search_res <- opq(bbox = core_zizkov) %>%
 # pulls bars as points
 bars <- search_res$osm_points %>%  
   filter(!is.na(name)) %>% 
-  select(name)
+  select(name) 
+
+# create base plot to be re-used later on
+base_plot <- ggplot() + 
+  basemap_gglayer(bars, map_service = "carto", map_type = "light", verbose = F)
 
 # show results
-leaflet(bars) %>% 
-  addProviderTiles("CartoDB.Positron") %>% 
-  addCircleMarkers(fillColor = "red",
-                   radius = 5,
-                   stroke = F,
-                   fillOpacity = .75,
-                   label = ~ name)
-
+base_plot +
+  geom_sf(data = st_transform(bars, 3857), color = "grey75") +
+  scale_fill_identity() +
+  coord_sf() +
+  theme_void()
+  
 ```
 <br>
 We have located `r nrow(bars)` bars, implying a distance matrix of `r nrow(bars) ^2` elements. Not a huge one by today's standards — but big enough to think twice about trying to solve using a pen and a piece of paper.
 
 I have found that while it is not overly difficult to solve the TSP for *all* the Žižkov bars there is educational value in running the TSP over only a small sample. I have found it advantageous to be able to actually show the distance matrix — and this page will easily accommodate only about a 5×5 matrix.
 
-```{r vzorek, out.width = '100%', message = F}
+```{r vzorek, out.width = '100%', message = F, warning = F}
 
 # a sample of bars to make the matrix fit a web page
 vzorek <- bars %>% 
   slice_sample(n = 5)
 
-# a beer tankard icon for nicer display
-beer_icon <- makeAwesomeIcon(
-  icon = "beer",
-  iconColor = "black",
-  markerColor = "blue",
-  library = "fa"
-)
 
-# a quick overview of our selection
-leaflet(vzorek) %>% 
-  addProviderTiles("CartoDB.Positron") %>% 
-  addAwesomeMarkers(data = vzorek,
-                    icon = beer_icon, # the awesome icon declared earlier
-                    label = ~name)
+# show results
+base_plot +
+  geom_sf(data = st_transform(vzorek, 3857), color = "goldenrod2") +
+  scale_fill_identity() +
+  coord_sf() +
+  theme_void()
 
 ```
-<br>
-
 The easiest distance matrix to calculate is plain "as the crow flies" distance. This can be calculated via a `sf::st_distance()` call.
 
 The resulting matrix will be based on pure distance, with some differences in interpretation depending on coordinate reference system of underlying data (Euclidean in projected CRS and spherical in unprojected CRS).
@@ -123,7 +117,7 @@ vzorek$name[as.numeric(crow_tsp)]
 
 Once we have the optimal route calculated it can be visualized using `{leaflet}`. The sequence of stops needs to be completed (by repeating the first stop after the last) and cast from points to a linestring.
 
-```{r map-crow, out.width = '100%', message = F}
+```{r map-crow, out.width = '100%', message = F, warning = F}
 stops <- as.numeric(crow_tsp) # sequence of "cities" as indices
 
 # bars in sequence, with the first repeated in last place
@@ -131,18 +125,16 @@ crow_result <- vzorek[c(stops, stops[1]), ] %>%
   st_combine() %>% # combined to a single object
   st_cast("LINESTRING") # & presented as a route (a line)
 
-# present the as-the-crow-flies based route in crimson color
-leaflet(crow_result) %>% 
-  addProviderTiles("CartoDB.Positron") %>% 
-  addPolylines(color = "crimson",
-               popup = "as the crow flies...") %>% 
-  addAwesomeMarkers(data = vzorek,
-                    icon = beer_icon, # the awesome icon declared earlier
-                    label = ~name)
-
+# present the naive distance based route in red color
+base_plot +
+  geom_sf(data = st_transform(crow_result,3857), color = "darkred") +
+  geom_sf(data = st_transform(vzorek, 3857), color = "goldenrod2") +
+  scale_fill_identity() +
+  coord_sf() +
+  theme_void()
 
 ```
-<br>
+
 From the visual overview we can see an obvious shortcoming of the "as the crow flies" approach: it completely ignores other constraints except for distance — such as the road network. 
 
 Thus while the route shown is "optimal" in the sense that it forms the shortest path joining the five bars selected, it is not one that we could actually follow (unless we were a flying crow).
@@ -230,7 +222,7 @@ Once we have solved the TSP and figured the sequence of "cities" to visit it is 
 
 For this purpose it is advantageous to prepare a data frame of indices of start and destination, and join it back with the original dataset from HERE API (which contains routes as linestrings).
 
-```{r distance_matrix-2, out.width = '100%', message = F}
+```{r distance_matrix-2, out.width = '100%', message = F, warning = F}
 stops <- as.numeric(distance_tsp) # sequence of "cities" as indices
 
 # a route as a set of origin & destination pairs, as indexes,
@@ -245,16 +237,15 @@ distance_result <-  distance_route %>%
              by = c("idx_origin", "idx_destination")) %>% 
   st_as_sf() 
 
-# present the distance based route in goldenrod color
-leaflet(distance_result) %>% 
-  addProviderTiles("CartoDB.Positron") %>% 
-  addPolylines(color = "GoldenRod",
-               popup = ~route_name) %>% 
-  addAwesomeMarkers(data = vzorek,
-                    icon = beer_icon, # the awesome icon declared earlier
-                    label = ~name)
+# present the distance based route in violet color
+base_plot +
+  geom_sf(data = st_transform(distance_result, 3857),  color = "orchid") +
+  geom_sf(data = st_transform(vzorek,3857), color = "goldenrod2") +
+  scale_fill_identity() +
+  coord_sf() +
+  theme_void()
 ```
-<br>
+
 Since the HERE API is generous in terms of results provided it is not difficult to construct an alternative distance matrix, using a different metric. This could be either trip duration or petrol consumption.
 
 In our specific situation both of these can be expected to be be highly correlated with the plain distance results. All the streets in Žižkov are of very similar type, and the average speed & consumption are unlikely to vary greatly between the routes.
@@ -287,7 +278,7 @@ Once we have solved the trip duration optimized TSP we again need to report the 
 
 This will not necessarily be the case in other contexts, especially ones with greater variation of road types (city streets vs. highways).
 
-```{r time_matrix-2, out.width = '100%', message = F}
+```{r time_matrix-2, out.width = '100%', message = F, warning = F}
 # the same steps as for distance based matrix
 stops <- as.numeric(duration_tsp)
 
@@ -301,15 +292,13 @@ duration_result <-  duration_route %>%
   st_as_sf() 
 
 # present the duration based route in light blue color
-leaflet(duration_result) %>% 
-  addProviderTiles("CartoDB.Positron") %>% 
-  addPolylines(color = "cornflowerblue",
-               popup = ~route_name) %>% 
-  addAwesomeMarkers(data = vzorek,
-                    icon = beer_icon,
-                    label = ~ name)
+base_plot +
+  geom_sf(data = st_transform(duration_result, 3857), color = "cornflowerblue") +
+  geom_sf(data = st_transform(vzorek, 3857), color = "goldenrod2") +
+  scale_fill_identity() +
+  coord_sf() +
+  theme_void()
 ```
-<br>
 
 I believe my tongue in cheek example has succeeded in showing two things:
 
