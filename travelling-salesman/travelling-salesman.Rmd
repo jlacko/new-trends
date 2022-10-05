@@ -19,7 +19,7 @@ The TSP is an optimization classic, with a number of well understood and highly 
 
 In this blog post I would like to share a practical example of solving the TSP using Open Street Map data of bars via [`{osmdata}`](https://cran.r-project.org/package=osmdata) and HERE routing engine via [`{hereR}`](https://cran.r-project.org/package=hereR). The actual solution will be found by utilizing the [`{TSP}`](https://cran.r-project.org/package=TSP) package.
 
-```{r drammatis-personae, message = F}
+```{r drammatis-personae, message = F, echo = F}
 library(sf) # for spatial data handling
 library(dplyr) # for general data frame processing
 library(osmdata) # to get data in from OSM
@@ -27,16 +27,27 @@ library(basemaps) # for drawing basemap
 library(ggplot2) # for mapping static content
 library(hereR) # interface to routing engine
 library(TSP) # to solve TSP
+
+# nastavení defaultů pro markdown chunks
+knitr::opts_chunk$set(echo = F, eval = T, message = F, warning = F, fig.width = 6, fig.height = 3, out.width="100%", dev = "cairo_pdf")
+
 ```
 
 The first step in our exercise is acquiring data of Žižkov bars. A search is performed over the area of *core Žižkov*, defined as a polygon, using the OSM Overpass API.
 
 As there seems not to be a clear consensus over what constitutes a bar, restaurant or a pub in Prague I am including all three of the possible amenities.
 
-```{r raw-data, out.width = '100%', message = F, warning = F}
+```{r raw-data}
 # bbox = http://bboxfinder.com - "core" Žižkov
 core_zizkov <- c(14.437408,50.081131,
                  14.452686,50.087561)
+
+
+map_extent <- data.frame(lon = c(1606665.7274, 1609407.9058),
+                         lat = c(6460206.8217, 6461568.3562)) %>% 
+  st_as_sf(coords = c("lon", "lat"), crs = 3857) %>% 
+  st_bbox() 
+                         
 
 # acquire bar data - https://wiki.openstreetmap.org/wiki/Map_features#Amenity 
 search_res <- opq(bbox = core_zizkov) %>%
@@ -51,7 +62,10 @@ bars <- search_res$osm_points %>%
 
 # create base plot to be re-used later on
 base_plot <- ggplot() + 
-  basemap_gglayer(bars, map_service = "carto", map_type = "light", verbose = F)
+  basemap_gglayer(map_extent, 
+                  map_service = "carto", 
+                  map_type = "light", 
+                  verbose = F)
 
 # show results
 base_plot +
@@ -61,12 +75,12 @@ base_plot +
   theme_void()
   
 ```
-<br>
+
 We have located `r nrow(bars)` bars, implying a distance matrix of `r nrow(bars) ^2` elements. Not a huge one by today's standards — but big enough to think twice about trying to solve using a pen and a piece of paper.
 
 I have found that while it is not overly difficult to solve the TSP for *all* the Žižkov bars there is educational value in running the TSP over only a small sample. I have found it advantageous to be able to actually show the distance matrix — and this page will easily accommodate only about a 5×5 matrix.
 
-```{r vzorek, out.width = '100%', message = F, warning = F}
+```{r vzorek}
 
 # a sample of bars to make the matrix fit a web page
 vzorek <- bars %>% 
@@ -85,7 +99,7 @@ The easiest distance matrix to calculate is plain "as the crow flies" distance. 
 
 The resulting matrix will be based on pure distance, with some differences in interpretation depending on coordinate reference system of underlying data (Euclidean in projected CRS and spherical in unprojected CRS).
 
-```{r crow-flies, out.width = '100%', message = F}
+```{r crow-flies}
 # distance matrix "as the crow flies"
 crow_matrix <- st_distance(vzorek,
                            vzorek)
@@ -102,7 +116,9 @@ Calculating the distance matrix using plain distance is easy, and the resulting 
 
 Solving the TSP for such a matrix is straightforward, as the hard work has been outsourced to the `{TSP}` package internals.
 
-```{r solve-crow, out.width = '100%', message = F}
+The optimal route will thus be:
+
+```{r solve-crow}
 # solve the TSP via {TSP}
 crow_tsp <- crow_matrix %>% 
   units::drop_units() %>%  # get rid of unit dimension
@@ -117,7 +133,7 @@ vzorek$name[as.numeric(crow_tsp)]
 
 Once we have the optimal route calculated it can be visualized using `{leaflet}`. The sequence of stops needs to be completed (by repeating the first stop after the last) and cast from points to a linestring.
 
-```{r map-crow, out.width = '100%', message = F, warning = F}
+```{r map-crow}
 stops <- as.numeric(crow_tsp) # sequence of "cities" as indices
 
 # bars in sequence, with the first repeated in last place
@@ -143,7 +159,7 @@ This shortcoming can be resolved by using an alternative distance matrix as inpu
 
 There are [several of them available](https://www.jla-data.net/eng/routing-in-r-context/), my personal favorite being the [`{hereR}`](https://cran.r-project.org/package=hereR) package interfacing to the [HERE routing engine](https://developer.here.com/). I have found HERE to be very reliable and rich in detail. It does require registration, but its free tier is more than adequate for most individual users.
 
-```{r herer, out.width = '100%', message = F}
+```{r herer}
 # set the HERE API key; mine is stored in an envir variable
 hereR::set_key(Sys.getenv("HERE_API_KEY"))
 
@@ -195,7 +211,9 @@ Having a variety of metrics will be helpful in construction of alternative dista
 
 The first routing distance matrix will be based on route distance; notice that while the matrix is hollow it is not symmetrical. This is not surprising, as routing is not commutative — optimal route from A to B need not be the same as from B to A, due to constraints such as one way roads. Žižkov is a veritable warren of one way streets.
 
-```{r distance_matrix-1, out.width = '100%', message = F}
+It will need to be declated as asymetrical to `{TSP}` solver; other than that the actual process of solving the matrix will be analogical to the "as the crow flies" matrix.
+
+```{r distance_matrix-1}
 # distance matrix based on actual distances
 distance_matrix <- matrix(routes$distance,
                           nrow = nrow(vzorek),
@@ -222,7 +240,7 @@ Once we have solved the TSP and figured the sequence of "cities" to visit it is 
 
 For this purpose it is advantageous to prepare a data frame of indices of start and destination, and join it back with the original dataset from HERE API (which contains routes as linestrings).
 
-```{r distance_matrix-2, out.width = '100%', message = F, warning = F}
+```{r distance_matrix-2}
 stops <- as.numeric(distance_tsp) # sequence of "cities" as indices
 
 # a route as a set of origin & destination pairs, as indexes,
@@ -252,7 +270,7 @@ In our specific situation both of these can be expected to be be highly correlat
 
 The most significant difference between the distance and time based TSP will be driven by current traffic, which is a factor HERE routing engine considers.
 
-```{r time_matrix-1, out.width = '100%', message = F}
+```{r time_matrix-1}
 # distance matrix based on travel time
 duration_matrix <- matrix(routes$duration,
                           nrow = nrow(vzorek),
@@ -278,7 +296,7 @@ Once we have solved the trip duration optimized TSP we again need to report the 
 
 This will not necessarily be the case in other contexts, especially ones with greater variation of road types (city streets vs. highways).
 
-```{r time_matrix-2, out.width = '100%', message = F, warning = F}
+```{r time_matrix-2}
 # the same steps as for distance based matrix
 stops <- as.numeric(duration_tsp)
 
