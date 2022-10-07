@@ -3,6 +3,7 @@ title: 'Thirsty Salesman Problem'
 subtitle: 'Solving TSP using R in context of {sf} & HERE API'
 author: 'Jindra Lacko'
 date:    "`r format(Sys.time(), '%Y-%m-%d')`"
+bibliography: "/home/jindra/Dropbox/EDU/library.json"
 always_allow_html: true
 output:
   pdf_document:
@@ -15,9 +16,9 @@ My Alma Mater, [Prague School of Economics](https://www.vse.cz/english/), is loc
 
 A crawl through the bars of Žižkov is therefore a familiar activity for many VŠE students, and can serve as a gateway drug for serious optimization techniques. Such as the [Travelling Salesman Problem](https://en.wikipedia.org/wiki/Travelling_salesman_problem).
 
-The TSP is an optimization classic, with a number of well understood and highly standardized solutions available in the context of statistical programming language R. 
+The TSP is an optimization classic, with a number of well understood and highly standardized solutions available in the context of statistical programming language R.
 
-In this blog post I would like to share a practical example of solving the TSP using Open Street Map data of bars via [`{osmdata}`](https://cran.r-project.org/package=osmdata) and HERE routing engine via [`{hereR}`](https://cran.r-project.org/package=hereR). The actual solution will be found by utilizing the [`{TSP}`](https://cran.r-project.org/package=TSP) package.
+In this blog post I would like to share a practical example of solving the TSP using Open Street Map data of bars via `{osmdata}` @padgham_etal17 and HERE routing engine via `{hereR}` @unterfinger_possenriede22. The actual solution will be found by utilizing the `{TSP}` @hahsler_hornik08 package.
 
 ```{r drammatis-personae, message = F, echo = F}
 library(sf) # for spatial data handling
@@ -33,9 +34,7 @@ knitr::opts_chunk$set(echo = F, eval = T, message = F, warning = F, fig.width = 
 
 ```
 
-The first step in our exercise is acquiring data of Žižkov bars. A search is performed over the area of *core Žižkov*, defined as a polygon, using the OSM Overpass API.
-
-As there seems not to be a clear consensus over what constitutes a bar, restaurant or a pub in Prague I am including all three of the possible amenities.
+The first step in our exercise is acquiring data of Žižkov bars. A search is performed over the area of *core Žižkov*, defined as a polygon, using the OSM Overpass API. As there seems not to be a clear consensus over what constitutes a bar, restaurant or a pub in Prague I am including all three of the possible amenities.
 
 ```{r raw-data}
 # bbox = http://bboxfinder.com - "core" Žižkov
@@ -76,12 +75,11 @@ base_plot +
   
 ```
 
-We have located `r nrow(bars)` bars, implying a distance matrix of `r nrow(bars) ^2` elements. Not a huge one by today's standards — but big enough to think twice about trying to solve using a pen and a piece of paper.
+We have located `r nrow(bars)` bars, implying a distance matrix of `r nrow(bars) ^2` elements. Not a huge one by today's standards – but big enough to think twice about trying to solve using a pen and a piece of paper.
 
-I have found that while it is not overly difficult to solve the TSP for *all* the Žižkov bars there is educational value in running the TSP over only a small sample. I have found it advantageous to be able to actually show the distance matrix — and this page will easily accommodate only about a 5×5 matrix.
+I have found that while it is not overly difficult to solve the TSP for *all* the Žižkov bars there is educational value in running the TSP over only a small sample. I have found it advantageous to be able to actually show the distance matrix – and this page will easily accommodate only about a 5×5 matrix.
 
 ```{r vzorek}
-
 # a sample of bars to make the matrix fit a web page
 vzorek <- bars %>% 
   slice_sample(n = 5)
@@ -95,6 +93,7 @@ base_plot +
   theme_void()
 
 ```
+
 The easiest distance matrix to calculate is plain "as the crow flies" distance. This can be calculated via a `sf::st_distance()` call.
 
 The resulting matrix will be based on pure distance, with some differences in interpretation depending on coordinate reference system of underlying data (Euclidean in projected CRS and spherical in unprojected CRS).
@@ -112,13 +111,14 @@ colnames(crow_matrix) <- vzorek$name
 crow_matrix
 
 ```
+
 Calculating the distance matrix using plain distance is easy, and the resulting matrix is symmetrical (distance from A to B equals distance from B to A). It is also hollow (distance from A to A itself is zero).
 
 Solving the TSP for such a matrix is straightforward, as the hard work has been outsourced to the `{TSP}` package internals.
 
 The optimal route will thus be:
 
-```{r solve-crow}
+```{r solve-crow, echo = T}
 # solve the TSP via {TSP}
 crow_tsp <- crow_matrix %>% 
   units::drop_units() %>%  # get rid of unit dimension
@@ -151,11 +151,11 @@ base_plot +
 
 ```
 
-From the visual overview we can see an obvious shortcoming of the "as the crow flies" approach: it completely ignores other constraints except for distance — such as the road network. 
+From the visual overview we can see an obvious shortcoming of the "as the crow flies" approach: it completely ignores other constraints except for distance --- such as the road network.
 
 Thus while the route shown is "optimal" in the sense that it forms the shortest path joining the five bars selected, it is not one that we could actually follow (unless we were a flying crow).
 
-This shortcoming can be resolved by using an alternative distance matrix as input, while retaining the techniques of `{TSP}` for the actual route selection. A possible source of more applicable data are routing engines, available to R users via API interfacing packages. 
+This shortcoming can be resolved by using an alternative distance matrix as input, while retaining the techniques of `{TSP}` for the actual route selection. A possible source of more applicable data are routing engines, available to R users via API interfacing packages.
 
 There are [several of them available](https://www.jla-data.net/eng/routing-in-r-context/), my personal favorite being the [`{hereR}`](https://cran.r-project.org/package=hereR) package interfacing to the [HERE routing engine](https://developer.here.com/). I have found HERE to be very reliable and rich in detail. It does require registration, but its free tier is more than adequate for most individual users.
 
@@ -194,22 +194,22 @@ for (i in seq_along(indices$from)) {
 }
 
 # a quick overview of structure of the routes data frame
-glimpse(routes)
+# glimpse(routes)
 
 ```
 
-The routing results give us several pieces of data: 
+The routing results give us several pieces of data:
 
-- the routes as linestring objects in EPSG:4326 (for visualization later on)
-- distance of the route (in meters)
-- travel time (in seconds) both raw and adjusted for traffic
-- petrol consumption
+-   the routes as linestring objects in EPSG:4326 (for visualization later on)
+-   distance of the route (in meters)
+-   travel time (in seconds) both raw and adjusted for traffic
+-   petrol consumption
 
 To these I have added three technical columns: indices of start & destination for easier joining of solved TSP results back and the name of the route as string for visualization purposes.
 
 Having a variety of metrics will be helpful in construction of alternative distance matrices.
 
-The first routing distance matrix will be based on route distance; notice that while the matrix is hollow it is not symmetrical. This is not surprising, as routing is not commutative — optimal route from A to B need not be the same as from B to A, due to constraints such as one way roads. Žižkov is a veritable warren of one way streets.
+The first routing distance matrix will be based on route distance; notice that while the matrix is hollow it is not symmetrical. This is not surprising, as routing is not commutative --- optimal route from A to B need not be the same as from B to A, due to constraints such as one way roads. Žižkov is a veritable warren of one way streets.
 
 It will need to be declated as asymetrical to `{TSP}` solver; other than that the actual process of solving the matrix will be analogical to the "as the crow flies" matrix.
 
@@ -225,7 +225,9 @@ colnames(distance_matrix) <- vzorek$name
 
 # a visual check; the units are meters (distance)
 distance_matrix
+```
 
+```{r distance_matrix-2, echo = T}
 # solve the TSP via {TSP}
 distance_tsp <- distance_matrix %>% 
   # declaring the problem as asymmetric TSP
@@ -240,7 +242,7 @@ Once we have solved the TSP and figured the sequence of "cities" to visit it is 
 
 For this purpose it is advantageous to prepare a data frame of indices of start and destination, and join it back with the original dataset from HERE API (which contains routes as linestrings).
 
-```{r distance_matrix-2}
+```{r distance_matrix-3}
 stops <- as.numeric(distance_tsp) # sequence of "cities" as indices
 
 # a route as a set of origin & destination pairs, as indexes,
@@ -320,5 +322,5 @@ base_plot +
 
 I believe my tongue in cheek example has succeeded in showing two things:
 
-- the ease of applying a standardized solution (the `{TSP}` package) to a well known and well understood problem (the Travelling Salesman Problem) within the context of R ecosystem 
-- construction of distance matrices from HERE API routing results, with option to optimize for multiple metrics (such as minimizing the travel distance, travel time and petrol consumption)
+-   the ease of applying a standardized solution (the `{TSP}` package) to a well known and well understood problem (the Travelling Salesman Problem) within the context of R ecosystem
+-   construction of distance matrices from HERE API routing results, with option to optimize for multiple metrics (such as minimizing the travel distance, travel time and petrol consumption)
