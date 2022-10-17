@@ -1,6 +1,5 @@
 ---
-title: 'Thirsty Salesman Problem'
-subtitle: 'Solving TSP using R in context of {sf} & HERE API'
+title: 'Solving TSP using R in context of {sf} & HERE API'
 author: 'Jindra Lacko'
 date:    "`r format(Sys.time(), '%Y-%m-%d')`"
 bibliography: "/home/jindra/Dropbox/EDU/library.json"
@@ -8,17 +7,19 @@ csl: "/home/jindra/Dropbox/EDU/iso690-2-numeric-en.csl"
 format: 
   docx:
     reference-doc: '../new-trends-template.docx'
+    number-sections: true
+    fig-width: 20
+    fig-height: 10
+
 execute: 
   eval: true
   echo: false
   message: false
   warning: false
-  fig.width: 6
-  fig.height: 3
-  out.width: '100%'
+
 ---
 
-## Quarto
+## Nové Trenky
 
 My Alma Mater, [Prague School of Economics](https://www.vse.cz/english/), is located in Žižkov. A formerly working class neighborhood, now rather gentrified, it has to this day retained some traces of its former rougher edges. One of these is an active night life.
 
@@ -114,7 +115,7 @@ rownames(crow_matrix) <- vzorek$name
 colnames(crow_matrix) <- vzorek$name
 
 # a visual check; note that the matrix has a {units} dimension
-crow_matrix
+# crow_matrix
 
 ```
 
@@ -124,7 +125,7 @@ Solving the TSP for such a matrix is straightforward, as the hard work has been 
 
 The optimal route will thus be:
 
-```{r solve-crow, echo = T}
+```{r solve-crow}
 # solve the TSP via {TSP}
 crow_tsp <- crow_matrix %>% 
   units::drop_units() %>%  # get rid of unit dimension
@@ -228,10 +229,10 @@ rownames(distance_matrix) <- vzorek$name
 colnames(distance_matrix) <- vzorek$name
 
 # a visual check; the units are meters (distance)
-distance_matrix
+# distance_matrix
 ```
 
-```{r distance_matrix-2, echo = T}
+```{r distance_matrix-2}
 # solve the TSP via {TSP}
 distance_tsp <- distance_matrix %>% 
   # declaring the problem as asymmetric TSP
@@ -287,7 +288,7 @@ rownames(duration_matrix) <- vzorek$name
 colnames(duration_matrix) <- vzorek$name
 
 # a visual check; the units are seconds (time)
-duration_matrix
+# duration_matrix
 
 # solving using the same pattern as distance based TSP
 duration_tsp <- duration_matrix %>% 
