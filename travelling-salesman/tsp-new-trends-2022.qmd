@@ -4,23 +4,32 @@ subtitle: 'Solving TSP using R in context of {sf} & HERE API'
 author: 'Jindra Lacko'
 date:    "`r format(Sys.time(), '%Y-%m-%d')`"
 bibliography: "/home/jindra/Dropbox/EDU/library.json"
-always_allow_html: true
-output:
-  pdf_document:
-    latex_engine: xelatex
-    template: "../master.tex"
-    fig_caption: yes
+csl: "/home/jindra/Dropbox/EDU/iso690-2-numeric-en.csl"
+format: 
+  docx:
+    reference-doc: '../new-trends-template.docx'
+execute: 
+  eval: true
+  echo: false
+  message: false
+  warning: false
+  fig.width: 6
+  fig.height: 3
+  out.width: '100%'
 ---
+
+## Quarto
 
 My Alma Mater, [Prague School of Economics](https://www.vse.cz/english/), is located in Žižkov. A formerly working class neighborhood, now rather gentrified, it has to this day retained some traces of its former rougher edges. One of these is an active night life.
 
-A crawl through the bars of Žižkov is therefore a familiar activity for many VŠE students, and can serve as a gateway drug for serious optimization techniques. Such as the [Travelling Salesman Problem](https://en.wikipedia.org/wiki/Travelling_salesman_problem).
+A crawl through the bars of Žižkov is therefore a familiar activity for many VŠE students, and can serve as a gateway drug for serious optimization techniques. Such as the Travelling Salesman Problem @gutin_punnen06.
 
 The TSP is an optimization classic, with a number of well understood and highly standardized solutions available in the context of statistical programming language R.
 
-In this blog post I would like to share a practical example of solving the TSP using Open Street Map data of bars via `{osmdata}` @padgham_etal17 and HERE routing engine via `{hereR}` @unterfinger_possenriede22. The actual solution will be found by utilizing the `{TSP}` @hahsler_hornik08 package.
+In this blog post I would like to share a practical example of solving the TSP using Open Street Map @openstreetmapcontributors17 data of bars via `{osmdata}` @padgham_etal17 and HERE routing engine via `{hereR}` @unterfinger_possenriede22. The actual solution will be found by utilizing the `{TSP}` @hahsler_hornik08 package.
 
-```{r drammatis-personae, message = F, echo = F}
+```{r setup}
+ 
 library(sf) # for spatial data handling
 library(dplyr) # for general data frame processing
 library(osmdata) # to get data in from OSM
@@ -28,9 +37,6 @@ library(basemaps) # for drawing basemap
 library(ggplot2) # for mapping static content
 library(hereR) # interface to routing engine
 library(TSP) # to solve TSP
-
-# nastavení defaultů pro markdown chunks
-knitr::opts_chunk$set(echo = F, eval = T, message = F, warning = F, fig.width = 6, fig.height = 3, out.width="100%", dev = "cairo_pdf")
 
 ```
 
@@ -151,13 +157,11 @@ base_plot +
 
 ```
 
-From the visual overview we can see an obvious shortcoming of the "as the crow flies" approach: it completely ignores other constraints except for distance --- such as the road network.
+From the visual overview we can see an obvious shortcoming of the "as the crow flies" approach: it completely ignores other constraints except for distance – such as the road network.
 
 Thus while the route shown is "optimal" in the sense that it forms the shortest path joining the five bars selected, it is not one that we could actually follow (unless we were a flying crow).
 
 This shortcoming can be resolved by using an alternative distance matrix as input, while retaining the techniques of `{TSP}` for the actual route selection. A possible source of more applicable data are routing engines, available to R users via API interfacing packages.
-
-There are [several of them available](https://www.jla-data.net/eng/routing-in-r-context/), my personal favorite being the [`{hereR}`](https://cran.r-project.org/package=hereR) package interfacing to the [HERE routing engine](https://developer.here.com/). I have found HERE to be very reliable and rich in detail. It does require registration, but its free tier is more than adequate for most individual users.
 
 ```{r herer}
 # set the HERE API key; mine is stored in an envir variable
@@ -209,7 +213,7 @@ To these I have added three technical columns: indices of start & destination fo
 
 Having a variety of metrics will be helpful in construction of alternative distance matrices.
 
-The first routing distance matrix will be based on route distance; notice that while the matrix is hollow it is not symmetrical. This is not surprising, as routing is not commutative --- optimal route from A to B need not be the same as from B to A, due to constraints such as one way roads. Žižkov is a veritable warren of one way streets.
+The first routing distance matrix will be based on route distance; notice that while the matrix is hollow it is not symmetrical. This is not surprising, as routing is not commutative – optimal route from A to B need not be the same as from B to A, due to constraints such as one way roads. Žižkov is a veritable warren of one way streets.
 
 It will need to be declated as asymetrical to `{TSP}` solver; other than that the actual process of solving the matrix will be analogical to the "as the crow flies" matrix.
 
