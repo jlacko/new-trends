@@ -1,16 +1,26 @@
 ---
 title: 'Solving TSP using R in context of {sf} & HERE API'
-author: 'Jindra Lacko'
 date:    "`r format(Sys.time(), '%Y-%m-%d')`"
-bibliography: "/home/jindra/Dropbox/EDU/library.json"
-csl: "/home/jindra/Dropbox/EDU/iso690-2-numeric-en.csl"
+abstract: 
+  'Toto je nejvíc nejlepší dokument o TSP na celém světě.
+  Dnes, zítra, i v budoucnu...'
+bibliography: 
+  '/home/jindra/Dropbox/EDU/library.json'
+csl: 
+  '../iso690-2-numeric-en.csl'
+author:
+  - name: 'Jindra Lacko'
+    affiliations:
+      - name: 'Vysoká škola ekonomická v Praze'
+        department: 'Katedra Ekonometrie'
+    orcid: '0000-0002-0375-5156'
+    email: 'jindra.lacko@vse.cz'
 format: 
   docx:
     reference-doc: '../new-trends-template.docx'
     number-sections: true
     fig-width: 20
     fig-height: 10
-
 execute: 
   eval: true
   echo: false
@@ -19,7 +29,7 @@ execute:
 
 ---
 
-## Nové Trenky
+# Nové Trendy submission
 
 My Alma Mater, [Prague School of Economics](https://www.vse.cz/english/), is located in Žižkov. A formerly working class neighborhood, now rather gentrified, it has to this day retained some traces of its former rougher edges. One of these is an active night life.
 
@@ -37,6 +47,7 @@ library(osmdata) # to get data in from OSM
 library(basemaps) # for drawing basemap
 library(ggplot2) # for mapping static content
 library(hereR) # interface to routing engine
+library(knitr) # to produce decent looking tables
 library(TSP) # to solve TSP
 
 ```
@@ -115,7 +126,7 @@ rownames(crow_matrix) <- vzorek$name
 colnames(crow_matrix) <- vzorek$name
 
 # a visual check; note that the matrix has a {units} dimension
-# crow_matrix
+# kable(round(crow_matrix))
 
 ```
 
@@ -136,17 +147,19 @@ crow_tsp <- crow_matrix %>%
 # the tour (crawl) as sequence of bars
 vzorek$name[as.numeric(crow_tsp)]
 
-```
-
-Once we have the optimal route calculated it can be visualized using `{leaflet}`. The sequence of stops needs to be completed (by repeating the first stop after the last) and cast from points to a linestring.
-
-```{r map-crow}
-stops <- as.numeric(crow_tsp) # sequence of "cities" as indices
+# sequence of "cities" as indices
+stops <- as.numeric(crow_tsp) 
 
 # bars in sequence, with the first repeated in last place
 crow_result <- vzorek[c(stops, stops[1]), ] %>%
   st_combine() %>% # combined to a single object
   st_cast("LINESTRING") # & presented as a route (a line)
+
+```
+
+The optimal route distance is `r round(sum(sf::st_length(crow_result)))` and its dimensions are meters of length.
+
+```{r map-crow}
 
 # present the naive distance based route in red color
 base_plot +
@@ -241,13 +254,7 @@ distance_tsp <- distance_matrix %>%
 
 # the tour (crawl) as sequence of bars
 vzorek$name[as.numeric(distance_tsp)]
-```
 
-Once we have solved the TSP and figured the sequence of "cities" to visit it is time to report our results.
-
-For this purpose it is advantageous to prepare a data frame of indices of start and destination, and join it back with the original dataset from HERE API (which contains routes as linestrings).
-
-```{r distance_matrix-3}
 stops <- as.numeric(distance_tsp) # sequence of "cities" as indices
 
 # a route as a set of origin & destination pairs, as indexes,
@@ -261,6 +268,10 @@ distance_result <-  distance_route %>%
   inner_join(routes,
              by = c("idx_origin", "idx_destination")) %>% 
   st_as_sf() 
+```
+The optimal route distance is `r round(sum(sf::st_length(distance_result)))` and its dimensions are meters of length.
+
+```{r distance_matrix-3}
 
 # present the distance based route in violet color
 base_plot +
@@ -297,11 +308,24 @@ duration_tsp <- duration_matrix %>%
 
 # the tour (crawl) as sequence of bars
 vzorek$name[as.numeric(duration_tsp)]
+
+# the same steps as for distance based matrix
+stops <- as.numeric(duration_tsp)
+
+duration_route <- data.frame(idx_origin = stops,
+                             idx_destination = c(stops[2:(nrow(vzorek))],
+                                                 stops[1]))
+# again, the same as for distance based calculation
+duration_result <-  duration_route %>% 
+  inner_join(routes,
+             by = c("idx_origin", "idx_destination")) %>% 
+  st_as_sf() 
+
 ```
 
-Once we have solved the trip duration optimized TSP we again need to report the results; in our use case the output is very similar to the distance based one.
+The optimal route "distance" is `r round(sum(sf::st_length(duration_result)))` and its dimensions are seconds of time.
 
-This will not necessarily be the case in other contexts, especially ones with greater variation of road types (city streets vs. highways).
+The actual route is in our use case very similar to the distance based one. This will not necessarily be the case in other contexts, especially ones with greater variation of road types (city streets vs. highways).
 
 ```{r time_matrix-2}
 # the same steps as for distance based matrix
