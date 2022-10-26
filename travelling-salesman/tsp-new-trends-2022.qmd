@@ -1,8 +1,8 @@
 ---
-title: 'Solving TSP using R in context of {sf} & HERE API'
+title: 'Solving Traveling Salesman problem using R in context of {sf} & HERE API'
 date:    "`r format(Sys.time(), '%Y-%m-%d')`"
 abstract: 
-  'Problém obchodního cestujícího je jedním z nejstaších a teoreticky nejlépe zpracovaných témat v oblasti optimalizačních úloh, s vysokou mírou standardizace řešení. Příspěvek ilustruje možnosti praktického využití jednozo z nástrojů - rozšiřujícího balíčku {TSP} - v kontextu statistického programovacího jazyka R. Dále demonstruje využití tří alternativních metrik pro optimalizaci: vzdálenosti vzdušnou čarou, dojezdovou dráhu autem a čas cesty autem.'
+  ''
 bibliography: 
   '/home/jindra/Dropbox/EDU/library.json'
 csl: 
@@ -32,15 +32,27 @@ execute:
   warning: false
 
 ---
+**Abstrakt**
+
+Problém obchodního cestujícího je jedním z nejstarších a teoreticky nejlépe zpracovaných témat v oblasti optimalizačních úloh, s vysokou mírou standardizace řešení. Příspěvek ilustruje možnosti praktického využití jednoho z nástrojů - rozšiřujícího balíčku `{TSP}` - v kontextu statistického programovacího jazyka R. Dále demonstruje využití tří alternativních metrik pro optimalizaci: vzdálenosti vzdušnou čarou, dojezdovou dráhu autem a čas cesty autem.
+
+**Klíčové slova:** *optimalizace, TSP, R, HERE API*
+
+**Abstract**
+
+The traveling salesman problem si one of the oldest and theoretically best understood problems in optimization techniques. From theoretical point of view the approaches to its solution are highly standardized. This article demonstrates several empirically advantageous approaches to solving Traveling Salesman Problem within context of the statistical programming language R. It further demonstrates three alternative metrics for optimization: Euclidean distance, travel distance by car and travel time by car.
+
+**Keywords:** *optimization, TSP, R, HERE API*
+
 # Problem statement
 
-The [Prague School of Economics](https://www.vse.cz/english/), is located in Žižkov. A formerly working class neighborhood, now rather gentrified, it has to this day retained some traces of its former rougher edges. One of these is an active night life.
+The Traveling Salesman Problem (TSP) @gutin_punnen06 is an optimization classic, with a number of well understood and highly standardized solutions available in the context of statistical programming language R.
 
-A visit to the bars of Žižkov is therefore a familiar activity for many VŠE students, and can serve as a gateway drug for serious optimization techniques. Such as the Travelling Salesman Problem @gutin_punnen06.
+In this article I would like to share a practical example of solving the TSP using Open Street Map @openstreetmapcontributors17 data of bars via `{osmdata}` @padgham_etal17 and routing engine provided by HERE Global B.V. Kennedyplein 222-226, 5611 ZT Eindhoven, Netherlands as an Application Programming Interface (API) service and accessed from R via `{hereR}` @unterfinger_possenriede22. The actual solution will be found by utilizing the `{TSP}` @hahsler_hornik08 package.
 
-The TSP is an optimization classic, with a number of well understood and highly standardized solutions available in the context of statistical programming language R.
+The Prague School of Economics, is located in Žižkov. A formerly working class neighborhood, now rather gentrified, it has to this day retained some traces of its former rougher edges. One of these is an active night life.
 
-In this article I would like to share a practical example of solving the TSP using Open Street Map @openstreetmapcontributors17 data of bars via `{osmdata}` @padgham_etal17 and HERE routing engine via `{hereR}` @unterfinger_possenriede22. The actual solution will be found by utilizing the `{TSP}` @hahsler_hornik08 package.
+A visit to the bars of Žižkov is therefore a familiar activity for many VŠE students, and can serve as an introduction to serious optimization techniques. 
 
 ```{r setup}
  
@@ -99,7 +111,7 @@ base_plot +
   
 ```
 
-We have located `r nrow(bars)` bars, implying a distance matrix of `r nrow(bars) ^2` elements. Not a huge one by today's standards – but big enough to think twice about trying to solve using a pen and a piece of paper. I have found it advantageous to be able to actually show the distance matrix – and this page will easily accommodate only about a 5×5 matrix.
+We have located `r nrow(bars)` bars, implying a distance matrix of `r nrow(bars) ^2` elements. Not a huge one by today's standards – but big enough to think twice about trying to solve using a pen and a piece of paper. 
 
 ```{r vzorek}
 # a sample of bars to make the matrix fit a web page
@@ -135,7 +147,7 @@ colnames(crow_matrix) <- vzorek$name
 
 Calculating the distance matrix using plain distance is easy, and the resulting matrix is symmetrical (distance from A to B equals distance from B to A). It is also hollow (distance from A to A itself is zero).
 
-Solving the TSP for such a matrix is straightforward, as the hard work has been outsourced to the `{TSP}` package internals.
+Solving the TSP for such a matrix is straightforward, as optimization analysis is readily implemented in the `{TSP}` package.
 
 The optimal route will thus be:
 
@@ -162,7 +174,7 @@ crow_result <- vzorek[c(stops, stops[1]), ] %>%
 
 The optimal route cost is `r round(sum(sf::st_length(crow_result)))` and the metric minimized is meters of length.
 
-From the visual overview we can see an obvious shortcoming of the "as the crow flies" approach: it completely ignores other constraints except for distance – such as the road network.
+From the visual overview we can see an obvious shortcoming of the "as the crow flies" approach: it completely ignores other constraints except for distance – such as the layout of a road network.
 
 Thus while the route shown is "optimal" in the sense that it forms the shortest path joining the five bars selected, it is not one that we could actually follow (unless we were a flying crow).
 
@@ -214,11 +226,11 @@ The routing results give us several pieces of data:
 -   travel time (in seconds) both raw and adjusted for traffic
 -   petrol consumption
 
-Having a variety of metrics will be helpful in construction of alternative distance matrices.
+Having a variety of metrics will be helpful in construction of alternative distance matrices that can be applied under different empirical conditions. 
 
 # Travel distance TSP
 
-The first routing distance matrix will be based on route distance; notice that while the matrix is hollow it is not symmetrical. This is not surprising, as routing is not commutative – optimal route from A to B need not be the same as from B to A, due to constraints such as one way roads. Žižkov is a veritable warren of one way streets.
+The next distance matrix will be based on route distance; notice that while the matrix is hollow it is not symmetrical. This is not surprising, as routing is not commutative – optimal route from A to B need not be the same as from B to A, due to constraints such as one way roads. Žižkov is a veritable warren of one way streets.
 
 It will need to be declated as asymetrical to `{TSP}` solver; other than that the actual process of solving the matrix will be analogical to the "as the crow flies" matrix.
 
@@ -269,6 +281,8 @@ In our specific situation both of these can be expected to be be highly correlat
 The most significant difference between the distance and time based TSP will be driven by current traffic, which is a factor HERE routing engine considers.
 
 # Travel time TSP
+
+Finally one can focus on travel time optimization – a task relevant for emergency services / first responders as well as commercial fast delivery services.
 
 ```{r time_matrix-1}
 # distance matrix based on travel time
@@ -338,7 +352,7 @@ base_plot +
 ```
 # Conclusion
 
-I believe my tongue in cheek example has succeeded in showing two things:
+This article demonstrates relevant empirical advantages to be gained from using:
 
--   the ease of applying a standardized solution (the `{TSP}` package) to a well known and well understood problem (the Travelling Salesman Problem) within the context of R ecosystem
--   construction of distance matrices from HERE API routing results, with option to optimize for multiple metrics (such as minimizing the travel distance, travel time and petrol consumption)
+- a standardized solution (the `{TSP}` package) to a well known and well understood problem (the Traveling Salesman Problem) within the context of R ecosystem
+- construction of distance matrices from HERE API routing results, with option to optimize for multiple metrics (such as minimizing the travel distance, travel time and petrol consumption)
